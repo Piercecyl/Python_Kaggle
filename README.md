@@ -1,4 +1,4 @@
 # Kaggle
 Kaggle practice
 
-P
+Preprocess data for now
