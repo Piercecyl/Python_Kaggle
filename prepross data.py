@@ -59,6 +59,8 @@ for col in col_na.index:
     df_all[col].fillna(df_all[col].mode()[0], inplace=True)
 
 
+# Transfer discrete into
+df_all.dtypes[df_all.dtypes == object].index
 
 
 
