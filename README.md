@@ -1,4 +1,4 @@
 # Kaggle
 Kaggle practice
 
-RandomForest & Regression with best fit feature
+Regression with best fit feature
