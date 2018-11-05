@@ -20,7 +20,9 @@ linreg = LinearRegression()
 y_pred = linreg.fit(X_train, y_train).predict(X_test)
 accuary_regression = linreg.score(X, y)
 r_square_regression = metrics.explained_variance_score(y_test, y_pred)
-
+y_pred = linreg.predict(df_test)
+y_pred = pd.DataFrame(y_pred)
+y_pred.to_csv('D:/kaggle/House Price/regression.csv')
 # ------------------------------------------------------------------------------------
 # Lasso
 from sklearn.linear_model import Lasso
