@@ -1,4 +1,4 @@
 # Kaggle
 Kaggle practice
 
-Regression with best fit feature
+Used Tree-Based and Regression as model to predicte.
