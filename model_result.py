@@ -1,0 +1,13 @@
+from prettytable import PrettyTable
+result_regression = PrettyTable(['model', 'R^2', 'RMSE'])
+result_regression.add_row(['Regression', r_square_regression, mrse_regression])
+result_regression.add_row(['Lasso', r_square_lasso, mrse_lasso])
+result_regression.add_row(['Ridge', r_square_ridge, mrse_ridge])
+result_regression.add_row(['ElasticNet', r_square_ela, mrse_ela])
+result_regression.add_row(['Randomfor', random_r2, random_mrse])
+result_regression.add_row(['XgBoost', xg_r2, xg_mrse])
+result_regression.add_row(['GB', gbr_r2, gbr_mrse])
+result_regression.add_row(['SVR', SVR_r2, SVR_mrse])
+result_regression.add_row(['LinearSVR', lin_SVR_score, lin_SVR_mrse])
+result_regression.add_row(['KNN', knn_r2, knn_mrse])
+print(result_regression)
