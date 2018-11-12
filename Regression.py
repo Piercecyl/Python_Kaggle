@@ -2,6 +2,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression
 from sklearn import metrics
+from sklearn.metrics import mean_squared_error
 # --------------------------------------------------------Input data----------------------------------------------------
 train = pd.read_csv('D:/kaggle/House Price/processed_train.csv')
 test = pd.read_csv('D:/kaggle/House Price/processed_test.csv')
@@ -14,6 +15,7 @@ linreg = LinearRegression()
 y_pred = linreg.fit(X_train, y_train).predict(X_test)
 accuary_regression = linreg.score(X_train, y_train)
 r_square_regression = metrics.explained_variance_score(y_test, y_pred)
+mrse_regression = mean_squared_error(y_test, y_pred)
 # -----------------------------------------------------------Lasso------------------------------------------------------
 from sklearn.linear_model import Lasso, LassoCV
 # Select the best alpha
@@ -23,17 +25,17 @@ lasso_cv.fit(X_train, y_train)
 lasso_cv.alpha_
 #
 lasso = Lasso(alpha=0.00002, max_iter=50000)
-lasso.fit(X_train, y_train)
-y_pred_lasso = lasso.predict(X_test)
+y_pred_lasso = lasso.fit(X_train, y_train).predict(X_test)
 accuary_lasso = lasso.score(X, y)
 r_square_lasso = metrics.explained_variance_score(y_test, y_pred_lasso)
+mrse_lasso = mean_squared_error(y_test, y_pred_lasso)
 # -------------------------------------------------------------Ridge----------------------------------------------------
 from sklearn.linear_model import Ridge
 ridge = Ridge(alpha=500)
-ridge.fit(X_train, y_train)
-y_pred_ridge = ridge.predict(X_test)
+y_pred_ridge = ridge.fit(X_train, y_train).predict(X_test)
 accuary_ridge = lasso.score(X, y)
-r_square_ridge = metrics.explained_variance_score(y_test, y_pred_lasso)
+r_square_ridge = metrics.explained_variance_score(y_test, y_pred_ridge)
+mrse_ridge = mean_squared_error(y_test, y_pred_ridge)
 # -------------------------------------------------------------ElasticNet-----------------------------------------------
 from sklearn.linear_model import ElasticNet, ElasticNetCV
 # Select the best alpha
@@ -48,6 +50,7 @@ elasticn = ElasticNet(alpha=0.0002, l1_ratio=0.2, max_iter=50000)
 y_pred_ela = elasticn.fit(X_train, y_train).predict(X_test)
 accuary_elas = elasticn.score(X, y)
 r_square_ela = metrics.explained_variance_score(y_test, y_pred_ela)
+mrse_ela = mean_squared_error(y_test, y_pred_ela)
 # ----------------------------------------------------------------Output------------------------------------------------
 from prettytable import PrettyTable
 result = PrettyTable(['model', 'R^2', 'Variance Score'])
@@ -56,36 +59,4 @@ result.add_row(['Lasso', accuary_lasso, r_square_lasso])
 result.add_row(['Ridge', accuary_ridge, r_square_ridge])
 result.add_row(['ElasticNet', accuary_elas, r_square_ela])
 print(result)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

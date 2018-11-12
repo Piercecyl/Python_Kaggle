@@ -2,27 +2,26 @@ import pandas as pd
 from sklearn.linear_model import Ridge
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy import stats
-from sklearn import svm
-from sklearn.covariance import EllipticEnvelope
+from sklearn.metrics import mean_squared_error
+from sklearn.model_selection import train_test_split
+from sklearn.feature_selection import SelectFromModel
+from sklearn.ensemble import RandomForestClassifier
 # --------------------------------------------------Input Data----------------------------------------------------------
 train = pd.read_csv('D:/kaggle/House Price/train.csv', index_col='Id')
+train = train[train['GrLivArea'] < 4000]
 test = pd.read_csv('D:/kaggle/House Price/test.csv', index_col='Id')
 df_all = pd.concat([train, test], axis=0, sort=True)
-# --------------------------------------------------Drop outlier Data---------------------------------------------------
-df_all = df_all[df_all['GrLivArea'] < 4000]
-print(df_all.shape)
 # ----------------------------------------------Dealing with NA values--------------------------------------------------
 col_na = df_all.isnull().sum()
 col_na = col_na[col_na > 0]
-print(col_na.sort_values(ascending = False))
+# print(col_na.sort_values(ascending = False))
 # Meaningful NA Values(Some Na is meaningful)
 cols_fillna = ['PoolQC','MiscFeature','Alley','Fence','MasVnrType','FireplaceQu',
                'GarageQual','GarageCond','GarageFinish','GarageType',
                'BsmtExposure','BsmtCond','BsmtQual','BsmtFinType1','BsmtFinType2']
 for cols in cols_fillna:
     df_all[cols].fillna(value='None', inplace=True)
-# GarageYrBlt NA: no garage. Fill with property YearBuilt.YearBuilt
+# GarageYrBlt NA: no garage. Fill with property YearBuilt
 df_all.loc[df_all.GarageYrBlt.isnull(), 'GarageYrBlt'] = df_all.loc[df_all.GarageYrBlt.isnull(), 'YearBuilt']
 # No masonry veneer - fill area with 0
 df_all['MasVnrArea'].fillna(value=0, inplace=True)
@@ -36,7 +35,7 @@ df_all.TotalBsmtSF.fillna(0, inplace=True)
 # No garage - fill areas/counts with 0
 df_all.GarageArea.fillna(0, inplace=True)
 df_all.GarageCars.fillna(0, inplace=True)
-# Colmns LotFrontage
+# Colmns LotFrontage：Used Ridge regression to find the best fit values
 def scale_minmax(col):
     return (col-col.min())/(col.max()-col.min())
 df_lotf = pd.get_dummies(df_all.drop('SalePrice', axis=1))
@@ -80,8 +79,8 @@ def scale_standare(col):
     return (col-col.mean())/(np.std(col))
 df_num = df_all.dtypes[df_all.dtypes != object].index
 df_num = df_num.drop('SalePrice')
-for col in df_num:
-    df_all[col] = scale_standare(df_all[col])
+df_all[df_num] = df_all[df_num].apply(scale_standare, axis=0)
+# ----------------------------------------------------one-hot encode----------------------------------------------------
 # processing data with one-hot encode：一個方法讓各屬性距離原點是相同距離
 # select which features to use (all for now)
 model_cols = df_all.columns
@@ -109,40 +108,74 @@ if ('Exterior1st' in model_cols) and ('Exterior2nd' in model_cols):
         col_cond2 = 'Exterior2nd_' + suffix
         df_model[col_cond1] = df_model[col_cond1] | df_model[col_cond2]
         df_model.drop(col_cond2, axis=1, inplace=True)
-# ---------------------------------------------Selecting meaningful features--------------------------------------------
-# method 1 - Correlation
-corr = df_model.corr()
-rel_vars = corr.SalePrice[(corr.SalePrice > 0.5)]
-rel_cols = list(rel_vars.index.values)
-# method 2 - Random Forest
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.feature_selection import SelectFromModel
-df_train = df_model.iloc[:1456, :]
-# Test data
-df_test = df_model.iloc[1456:, :]
-df_test = df_test.drop('SalePrice', axis=1)
-# Split data
-X = df_train.drop('SalePrice', axis=1)
-y = df_train['SalePrice']
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=.2)
-train_list = []
-forest = RandomForestClassifier()
-sfm = SelectFromModel(forest, threshold=0.02)
-sfm.fit(X_train, y_train.astype('int'))
-for feature_list_index in sfm.get_support(indices=True):
-    train_list = X.columns[feature_list_index]
-    rel_cols.append(train_list)
-    print(X.columns[feature_list_index])
-# Remove duplicate
-rel_cols = {}.fromkeys(rel_cols).keys()
-rel_cols = list(rel_cols)
+# --------------------------------------------------Drop outlier Data---------------------------------------------------
+# 預測結果後，超過三倍標準差為Outliers
+def find_outliers(model, X, y, sigma=3):
+    # predict y values using model
+    try:
+        y_pred = pd.Series(model.predict(X), index=y.index)
+    # if predicting fails, try fitting the model first
+    except:
+        model.fit(X, y)
+        y_pred = pd.Series(model.predict(X), index=y.index)
+
+    # calculate residuals between the model prediction and true y values
+    resid = y - y_pred
+    mean_resid = resid.mean()
+    std_resid = resid.std()
+
+    # calculate z statistic, define outliers to be where |z|>sigma
+    z = (resid - mean_resid) / std_resid
+    outliers = z[abs(z) > sigma].index
+
+    # print and plot the results
+    print('R2=', model.score(X, y))
+    print('rmse=', mean_squared_error(y, y_pred))
+    print('---------------------------------------')
+    print(len(outliers), 'outliers:')
+    print(outliers.tolist())
+    return outliers
+train = df_model
+train = train.iloc[:1456, :]
+X = train.drop('SalePrice', axis=1)
+y = train.SalePrice
+outliers = find_outliers(Ridge(), X, y)
+df_model = df_model.drop(outliers)
+# ------------------------------------------------Feature Selection-----------------------------------------------------
+# Identify Correlated Feature and remove them
+train = df_model
+train = train.iloc[:1437, :]
+threshold = 0.9
+corr_matrix = train.corr().abs()
+upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(np.bool))
+to_drop = [column for column in upper.columns if any(upper[column] > threshold)]
+df_model = df_model.drop(columns=to_drop)
+# Feature Selection through Feature importance
+X = df_model.drop('SalePrice', axis=1).iloc[:1437, :]
+y = np.exp(df_model.SalePrice.iloc[:1437]).astype('int')
+embeded_rf_selector = SelectFromModel(RandomForestClassifier(n_estimators=1000), threshold='1.25*median')
+embeded_rf_selector.fit(X, y)
+embeded_rf_support = embeded_rf_selector.get_support()
+embeded_rf_feature = X.loc[:, embeded_rf_support].columns.tolist()
+embeded_rf_feature.append('SalePrice')
+df_model = df_model[embeded_rf_feature]
+# # -----------------------------------------------PCA------------------------------------------------------------------
+# from sklearn.decomposition import PCA
+# pca = PCA(n_components=80)
+# processed_train = df_model
+# processed_train = processed_train.iloc[:1437, :]
+# processed_train = processed_train.drop('SalePrice', axis=1)
+# processed_test = df_model
+# processed_test = processed_test.iloc[1437:, :]
+# processed_test = processed_test.drop('SalePrice', axis=1)
+# processed_train = pca.fit_transform(processed_train)
+# processed_test = pca.fit_transform(processed_test)
 # ---------------------------------------Generate Training data and test data-------------------------------------------
-processed_train = df_model[rel_cols]
-processed_train = processed_train.iloc[:1456, :]
-processed_test = df_model[rel_cols]
-processed_test = processed_test.iloc[1456:, :]
-
-
+processed_train = df_model
+processed_train = processed_train.iloc[:1437, :]
+processed_test = df_model
+processed_test = processed_test.iloc[1437:, :]
+processed_train = pd.DataFrame(processed_train)
+processed_test = pd.DataFrame(processed_test)
 processed_train.to_csv('D:/kaggle/House Price/processed_train.csv')
 processed_test.to_csv('D:/kaggle/House Price/processed_test.csv')
