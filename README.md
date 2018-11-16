@@ -1,4 +1,17 @@
 # Kaggle
 Kaggle practice
 
-Used Tree-Based and Regression as model to predicte.
+Current
+
+
+
+
+
+Score：0.12792
+
+
+
+
+
+
+Top 37%
