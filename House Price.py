@@ -8,6 +8,8 @@ from sklearn.svm import SVR, LinearSVR
 from datetime import datetime
 from sklearn.linear_model import Ridge, RidgeCV
 from mlxtend.regressor import StackingRegressor
+from sklearn.metrics import mean_squared_error
+from scipy.special import boxcox1p
 import warnings
 warnings.filterwarnings('ignore')
 def timer(start_time=None):
@@ -21,11 +23,13 @@ def timer(start_time=None):
 # ----------------------------------------------Input Data--------------------------------------------------------------
 start_time = timer(None)
 train = pd.read_csv('D:/kaggle/House Price/train.csv', index_col='Id')
-train = train[train['GrLivArea'] < 4000]
+train = train.drop(train[(train['GrLivArea']>4000) & (train['SalePrice']<300000)].index)
+sale_price = train['SalePrice']
+train = train.drop('SalePrice', axis=1)
 test = pd.read_csv('D:/kaggle/House Price/test.csv', index_col='Id')
 df_all = pd.concat([train, test], axis=0, sort=True)
-# --------------------------------------------Dealing with NA values----------------------------------------------------
-def feature_engineer(df_all):
+def feature_engineer(df_all, sale_price):
+    # -----------------------------------Dealing with NA values---------------------------------------------------------
     # col_na = df_all.isnull().sum()
     # col_na = col_na[col_na > 0]
     # print(col_na.sort_values(ascending = False))
@@ -49,27 +53,30 @@ def feature_engineer(df_all):
     df_all.GarageArea.fillna(0, inplace=True)
     df_all.GarageCars.fillna(0, inplace=True)
     # Colmns LotFrontage：Used Ridge regression to find the best fit values
-    def scale_minmax(col):
-        return (col-col.min())/(col.max()-col.min())
-    df_lotf = pd.get_dummies(df_all.drop('SalePrice', axis=1))
+    def scale_standardization(col):
+        return (col-col.mean())/(col.std())
+    # def scale_minmax(col):
+    #     return (col-col.min())/(col.max() - col.min())
+    df_lotf = pd.get_dummies(df_all)
     for col in df_lotf.drop('LotFrontage', axis=1).columns:
-        df_lotf[col] = scale_minmax(df_lotf[col])
+        df_lotf[col] = scale_standardization(df_lotf[col])
     lf_train = df_lotf.dropna()
     lf_train_y = lf_train.LotFrontage
     lf_train_X = lf_train.drop('LotFrontage', axis=1)
-    lr = Ridge()
+    lasso_cv = RidgeCV(alphas=np.logspace(-3, 3, 100))
+    lasso_cv.fit(lf_train_X, lf_train_y)
+    lr = Ridge(alpha=lasso_cv.alpha_, max_iter=1000)
     lr.fit(lf_train_X, lf_train_y)
     lf_test = df_lotf.LotFrontage.isnull()
     X = df_lotf[lf_test].drop('LotFrontage', axis=1)
     y = lr.predict(X)
     df_all.loc[lf_test, 'LotFrontage'] = y
     # Remaining NA
-    df_last = df_all.drop('SalePrice', axis=1)
-    col_na = df_last.isnull().sum()
+    col_na = df_all.isnull().sum()
     col_na = col_na[col_na > 0]
     for col in col_na.index:
         df_all[col].fillna(df_all[col].mode()[0], inplace=True)
-    # -----------------------------------------Transfer discrete into category------------------------------------------
+    # -----------------------------------------Transfer discrete into category-------------------------------Categorical
     cols_ExGd = ['ExterQual','ExterCond','BsmtQual','BsmtCond',
                  'HeatingQC','KitchenQual','FireplaceQu','GarageQual',
                 'GarageCond','PoolQC']
@@ -84,23 +91,26 @@ def feature_engineer(df_all):
     df_all['LotShape'].replace({'Reg':3,'IR1':2,'IR2':1,'IR3':0}, inplace=True)
     df_all['Utilities'].replace({'AllPub':3,'NoSewr':2,'NoSeWa':1,'ELO':0}, inplace=True)
     df_all['LandSlope'].replace({'Gtl':2,'Mod':1,'Sev':0}, inplace=True)
-    # ---------------------------------------------Data scale normalization---------------------------------------------
-    # Log 'SalePrice'
-    df_all.SalePrice = np.log(df_all.SalePrice)
-    # Standardization numeric data
+    # -----------------------------------------------Adjust Skew-----------------------------------------------Numerical
+    # The closer to 0, the better
     df_num = df_all.dtypes[df_all.dtypes != object].index
-    df_num = df_num.drop('SalePrice')
-    df_all[df_num] = df_all[df_num].apply(scale_minmax, axis=0)
-    # -----------------------------------------------Adjust Skew--------------------------------------------------------
-    skew_feature = np.abs(df_all[df_num][:2896].skew()).sort_values(ascending=False)
-    skew_feature = skew_feature[skew_feature > 0.5].index
-    df_all[skew_feature] = np.log1p(df_all[skew_feature])
-    # ----------------------------------------------------one-hot encode------------------------------------------------
-    # processing data with one-hot encode：一個方法讓各屬性距離原點是相同距離
+    skew_feature = np.abs(df_all[df_num][:2917].skew()).sort_values(ascending=False)
+    skew_feature = skew_feature[skew_feature > 0.2].index
+    # Box Cox
+    for skew in skew_feature:
+        df_all[skew] = boxcox1p(df_all[skew], 0.15)
+    # Log1p
+    # for skew in skew_feature:
+    #     df_all[skew] = np.log1p(df_all[skew])
+    # ---------------------------------------------Data scale normalization------------------------------------Numerical
+    # Standardization numeric data
+    df_all[df_num] = df_all[df_num].apply(scale_standardization, axis=0)
+    # ----------------------------------------------------one-hot encode-------------------------------------Categorical
+    # processing data with one-hot encode：一個方法讓各屬性距離原點是相同距離(沒有階級)
     # select which features to use (all for now)
     model_cols = df_all.columns
     # encode categoricals
-    df_model = pd.get_dummies(df_all[model_cols])
+    df_model = pd.get_dummies(df_all)
     # Rather than including Condition1 and Condition2, or Exterior1st and Exterior2nd,
     # combine the dummy variables (allowing 2 true values per property)
     if ('Condition1' in model_cols) and ('Condition2' in model_cols):
@@ -123,7 +133,25 @@ def feature_engineer(df_all):
             col_cond2 = 'Exterior2nd_' + suffix
             df_model[col_cond1] = df_model[col_cond1] | df_model[col_cond2]
             df_model.drop(col_cond2, axis=1, inplace=True)
-
+    # ------------------------------------------------Feature Selection-------------------------------------------------
+    # Identify Correlated Feature and remove them(Co-linearity)
+    train = df_model
+    train = train.iloc[:1458, :]
+    threshold = 0.9
+    corr_matrix = train.corr().abs()
+    upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(np.bool))
+    to_drop = [column for column in upper.columns if any(upper[column] > threshold)]
+    df_model = df_model.drop(columns=to_drop)
+    # Feature Selection through Feature importance
+    X = df_model.iloc[:1458, :]
+    y = sale_price.astype('int')
+    embeded_rf_selector = SelectFromModel(RandomForestClassifier(n_estimators=1000, n_jobs=-1), threshold='1.25*median')
+    embeded_rf_selector.fit(X, y)
+    embeded_rf_support = embeded_rf_selector.get_support()
+    embeded_rf_feature = X.loc[:, embeded_rf_support].columns.tolist()
+    df_model = df_model[embeded_rf_feature]
+    # Log 'SalePrice'
+    sale_price = np.log(sale_price)
     # --------------------------------------------------Drop outlier Data-----------------------------------------------
     # 預測結果後，超過三倍標準差為Outliers
     def find_outliers(model, X, y, sigma=3):
@@ -148,34 +176,12 @@ def feature_engineer(df_all):
         # print(len(outliers), 'outliers:')
         # print(outliers.tolist())
         return outliers
-    train = df_model
-    train = train.iloc[:1456, :]
-    X = train.drop('SalePrice', axis=1)
-    y = train.SalePrice
     outliers = find_outliers(Ridge(), X, y)
     df_model = df_model.drop(outliers)
-    # ------------------------------------------------Feature Selection-------------------------------------------------
-    # Identify Correlated Feature and remove them
-    train = df_model
-    train = train.iloc[:1436, :]
-    threshold = 0.9
-    corr_matrix = train.corr().abs()
-    upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(np.bool))
-    to_drop = [column for column in upper.columns if any(upper[column] > threshold)]
-    df_model = df_model.drop(columns=to_drop)
-    # Feature Selection through Feature importance
-    X = df_model.drop('SalePrice', axis=1).iloc[:1436, :]
-    y = np.exp(df_model.SalePrice.iloc[:1436]).astype('int')
-    embeded_rf_selector = SelectFromModel(RandomForestClassifier(n_estimators=1000, n_jobs=-1), threshold='1.25*median')
-    embeded_rf_selector.fit(X, y)
-    embeded_rf_support = embeded_rf_selector.get_support()
-    embeded_rf_feature = X.loc[:, embeded_rf_support].columns.tolist()
-    embeded_rf_feature.append('SalePrice')
-    df_model = df_model[embeded_rf_feature]
-    processed_train = df_model.iloc[:1440, :]
-    processed_test = df_model.iloc[1440:, :]
-    processed_test = processed_test.drop('SalePrice', axis=1)
-    return processed_train, processed_test
+    sale_price = sale_price.drop(outliers)
+    processed_train = df_model.iloc[:1438, :]
+    processed_test = df_model.iloc[1438:, :]
+    return processed_train, processed_test, sale_price
     # -----------------------------------------------PCA----------------------------------------------------------------
     # from sklearn.decomposition import PCA
     # pca = PCA(n_components=80)
@@ -191,11 +197,11 @@ def feature_engineer(df_all):
     # processed_train = pd.DataFrame(processed_train)
     # processed_test = pd.DataFrame(processed_test)
     # return processed_train, processed_test, np_SalePrice
-train, test = feature_engineer(df_all)
+train, test, sale_price = feature_engineer(df_all, sale_price)
 # ----------------------------------------------Input processed data----------------------------------------------------
 # Split data
-X = train.drop('SalePrice', axis=1)
-y = train['SalePrice']
+X = train
+y = sale_price
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=.2, random_state=2)
 # -------------------------------------------------Regression-----------------------------------------------------------
 from sklearn.linear_model import LinearRegression
@@ -232,8 +238,6 @@ models.append(('elasticn', ElasticNet(alpha=ElasticNetCV_cv.alpha_, l1_ratio=Ela
 from sklearn.ensemble import RandomForestRegressor
 parameters = {
     "n_estimators": range(100, 501, 50),
-    'max_features': range(10, 81, 5),
-    'min_samples_split': [2, 3, 4, 5, 6, 7, 8, 9, 10]
 }
 forest = RandomForestRegressor()
 optimized_RF = GridSearchCV(forest, parameters, n_jobs=-1)
@@ -327,12 +331,37 @@ Score(names, results)
 timer(start_time)
 # --------------------------------------------------Stack--------------------------------------------------------------
 # Test
-sta = StackingRegressor(regressors=[ridge, linreg, gbr, svr, xg], meta_regressor=gbr)
-fin_pred = sta.fit(X, y).predict(X)
-print("Mean Squared Error: %.4f" % np.mean((fin_pred - y) ** 2))
-# Fin results
+# sta = StackingRegressor(regressors=[lasso, ridge, elasticn, linreg, xg], meta_regressor=ridge)
+# fin_pred = sta.fit(X_train, y_train).predict(X_test)
+# print("Mean Squared Error:", mean_squared_error(y_test, fin_pred))
+# # Fin results
 # fin_pred = sta.fit(X, y).predict(test)
 # y_pred = np.exp(fin_pred)
 # y_pred = pd.DataFrame({'Id': range(1461, 2920, 1), 'SalePrice': y_pred})
 # y_pred.to_csv('D:/kaggle/House Price/sample_submission1.csv', index=False)
-#1461~2919
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
