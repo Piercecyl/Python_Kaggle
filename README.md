@@ -7,11 +7,18 @@ Current
 
 
 
-Score：0.12792
+Score：0.12437
 
 
 
 
 
 
-Top 37%
+Top 30%
+
+
+
+
+
+
+ Time taken: 1 hours 30 minutes and 22.74 seconds.
