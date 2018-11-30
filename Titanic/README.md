@@ -1,1 +1,1 @@
-# How to score 0.8134 in Titanic Kaggle Challenge
+# How to score 0.813 in Titanic Kaggle Challenge
