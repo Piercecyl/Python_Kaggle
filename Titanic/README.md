@@ -1,1 +1,1 @@
-# How to score 0.813 in Titanic Kaggle Challenge
+# How to achieve 84% accuracy in Titanic Kaggle Challenge
