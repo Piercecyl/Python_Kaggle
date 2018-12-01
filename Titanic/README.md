@@ -6,6 +6,6 @@
 * EDA
 * Feature engineering
 * Modeling Data
-* Tuning modeㄠ
+* Tuning mode
 
 ![image](https://github.com/Piercecyl/Kaggle/blob/master/Titanic/image/score.PNG)
