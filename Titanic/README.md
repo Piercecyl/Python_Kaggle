@@ -12,4 +12,4 @@
 
 
 
-## 詳情點選 T
+## 詳情點選 Titanic.ipynb
