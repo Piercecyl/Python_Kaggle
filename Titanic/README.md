@@ -9,3 +9,7 @@
 * Tuning mode
 
 ![image](https://github.com/Piercecyl/Kaggle/blob/master/Titanic/image/score.PNG)
+
+
+
+## 詳情點選 T
