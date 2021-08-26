@@ -12,4 +12,4 @@
 
 
 
-## 詳情點選 Titanic.ipynb
+## 詳情點選 Titanic.ipynb (IE 有時打不開，建議用 Chorm )
